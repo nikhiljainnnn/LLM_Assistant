@@ -1,0 +1,76 @@
+# ═══════════════════════════════════════════════════════════
+# configs/models.yaml
+# Supported model configurations for the LLM service.
+# These are informational; actual defaults are in .env
+# ═══════════════════════════════════════════════════════════
+
+openai:
+  models:
+    - id: gpt-4o
+      context_window: 128000
+      strengths: [reasoning, coding, instruction_following]
+    - id: gpt-4o-mini
+      context_window: 128000
+      strengths: [speed, cost_efficiency]
+      default: true
+    - id: gpt-3.5-turbo
+      context_window: 16385
+      strengths: [speed, legacy]
+
+  embeddings:
+    - id: text-embedding-3-small
+      dims: 1536
+      default: true
+    - id: text-embedding-3-large
+      dims: 3072
+
+huggingface:
+  models:
+    - id: mistralai/Mistral-7B-Instruct-v0.2
+      size_gb: 14
+      quantization: none
+      default: true
+    - id: meta-llama/Llama-2-7b-chat-hf
+      size_gb: 14
+      quantization: none
+      requires_token: true
+    - id: microsoft/Phi-3-mini-4k-instruct
+      size_gb: 7.6
+      quantization: none
+      strengths: [speed, small_footprint]
+    - id: google/gemma-2b-it
+      size_gb: 5
+      quantization: none
+
+  embeddings:
+    - id: sentence-transformers/all-MiniLM-L6-v2
+      dims: 384
+      default: true
+      note: "Fast local fallback when OpenAI key not available"
+    - id: sentence-transformers/all-mpnet-base-v2
+      dims: 768
+      note: "Higher quality, slower"
+
+lora:
+  recommended_configs:
+    fast_experiment:
+      r: 8
+      lora_alpha: 32
+      lora_dropout: 0.05
+      target_modules: [q_proj, v_proj]
+      epochs: 1
+      batch_size: 4
+    balanced:
+      r: 16
+      lora_alpha: 32
+      lora_dropout: 0.05
+      target_modules: [q_proj, k_proj, v_proj, o_proj]
+      epochs: 3
+      batch_size: 4
+    high_quality:
+      r: 64
+      lora_alpha: 128
+      lora_dropout: 0.1
+      target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+      epochs: 5
+      batch_size: 2

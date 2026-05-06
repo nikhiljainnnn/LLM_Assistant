@@ -1,0 +1,62 @@
+# ═══════════════════════════════════════════════════════════
+# configs/rag.yaml
+# Retrieval-Augmented Generation pipeline configuration
+# ═══════════════════════════════════════════════════════════
+
+chunking:
+  strategy: sliding_window       # sliding_window | fixed | sentence
+  chunk_size: 512                # tokens/words per chunk
+  chunk_overlap: 64              # overlap between consecutive chunks
+
+  # File-type specific overrides
+  overrides:
+    pdf:
+      chunk_size: 400
+      chunk_overlap: 50
+    markdown:
+      chunk_size: 600            # markdown sections tend to be longer
+      chunk_overlap: 80
+
+vector_store:
+  type: faiss
+  index_type: IndexFlatIP        # IndexFlatIP | IndexIVFFlat | IndexHNSWFlat
+  metric: cosine                 # cosine (via normalised inner product)
+  persistence: true
+  path: ./data/faiss_index
+
+  # For larger corpora, switch to IVF for speed:
+  # ivf_nlist: 100               # number of Voronoi cells
+  # ivf_nprobe: 10               # cells to search at query time
+
+retrieval:
+  top_k: 5
+  score_threshold: 0.3           # minimum cosine similarity (0–1)
+  deduplicate: true              # remove near-duplicate chunks
+
+prompt_templates:
+  default: |
+    Use the following context to answer the question.
+    If the context doesn't contain the answer, say "I don't have that information."
+
+    CONTEXT:
+    {context}
+
+    QUESTION: {question}
+
+  strict: |
+    Answer ONLY using the provided context. Do not use external knowledge.
+    If the answer is not in the context, respond: "Not found in documents."
+
+    CONTEXT:
+    {context}
+
+    QUESTION: {question}
+
+  conversational: |
+    You are a helpful assistant with access to the following documents.
+    Use them to answer naturally. Cite sources when relevant.
+
+    DOCUMENTS:
+    {context}
+
+    USER: {question}
