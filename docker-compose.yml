@@ -33,6 +33,19 @@ services:
     networks:
       - app-net
 
+  # ── Prometheus ─────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: llm-assistant-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - app-net
+    depends_on:
+      - backend
+
   # ── Redis Cache ────────────────────────────────────────────────
   redis:
     image: redis:7-alpine

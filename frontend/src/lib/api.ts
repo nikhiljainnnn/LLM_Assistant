@@ -2,7 +2,7 @@
  * src/lib/api.ts — Typed API client for the LLM Assistant backend.
  */
 
-const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ?? "http://localhost:8000";
+const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ?? "";
 const API_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) ?? "dev-api-key";
 
 const defaultHeaders = { "Content-Type": "application/json", "X-API-Key": API_KEY };

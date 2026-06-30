@@ -25,6 +25,7 @@ from app.core.middleware import (
     validation_exception_handler,
 )
 from app.models.schemas import HealthResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 setup_logging()
 logger = get_logger(__name__)
@@ -95,6 +96,9 @@ def create_app() -> FastAPI:
             },
             vector_store_size=count,
         )
+
+    # Instrument Prometheus
+    Instrumentator().instrument(app).expose(app)
 
     return app
 
