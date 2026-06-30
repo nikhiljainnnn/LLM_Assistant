@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.core.security import require_api_key
+from app.core.security import get_current_user
+from app.models.domain import User
 from app.models.schemas import (
     IngestRequest,
     IngestResponse,
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest_text(
     req: IngestRequest,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     chunks_added = await rag_service.ingest(
         text=req.text,
@@ -45,7 +46,7 @@ async def ingest_text(
 async def ingest_file(
     file: UploadFile = File(...),
     source_name: str = Form(default=""),
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     allowed = {".pdf", ".docx", ".txt", ".md"}
     suffix = "." + file.filename.split(".")[-1].lower()
@@ -76,14 +77,14 @@ async def ingest_file(
 @router.post("/search", response_model=SearchResponse)
 async def search(
     req: SearchRequest,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     results = await rag_service.retrieve(req.query, top_k=req.top_k)
     return SearchResponse(query=req.query, results=results)
 
 
 @router.get("/stats")
-async def stats(_key: str = Depends(require_api_key)):
+async def stats(current_user: User = Depends(get_current_user)):
     return {
         "total_vectors": rag_service.vector_count,
         "embedding_dim": rag_service._get_store().dim,

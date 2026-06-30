@@ -1,0 +1,129 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════
+#  LLM Assistant — Docker Compose
+#  Services: backend (FastAPI) · frontend (React/Nginx)
+#
+#  Usage:
+#    docker-compose up --build            # start all
+#    docker-compose up backend            # backend only
+#    docker-compose logs -f backend       # tail logs
+# ═══════════════════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL Database ────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: llm-assistant-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llm_assistant
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_assistant"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  # ── Redis Cache ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: llm-assistant-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-net
+
+  # ── FastAPI Backend ────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: llm-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-secret}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/llm_assistant}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      API_KEY: ${API_KEY:-dev-api-key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_DEFAULT_MODEL: ${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_DEFAULT_MODEL: ${HF_DEFAULT_MODEL:-mistralai/Mistral-7B-Instruct-v0.2}
+      VECTOR_STORE_PATH: /app/data/faiss_index
+      CHUNK_SIZE: ${CHUNK_SIZE:-512}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-64}
+      TOP_K_RETRIEVAL: ${TOP_K_RETRIEVAL:-5}
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+      MAX_HISTORY_TURNS: ${MAX_HISTORY_TURNS:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173,http://frontend"
+    volumes:
+      - faiss_data:/app/data/faiss_index
+      - lora_models:/app/models/lora_adapter
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  # ── React Frontend ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_API_KEY: ${API_KEY:-dev-api-key}
+        VITE_APP_TITLE: "NEXUS AI Assistant"
+    container_name: llm-assistant-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-net
+
+# ── Volumes ────────────────────────────────────────────────────
+volumes:
+  faiss_data:
+    driver: local
+  lora_models:
+    driver: local
+  pgdata:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────
+networks:
+  app-net:
+    driver: bridge

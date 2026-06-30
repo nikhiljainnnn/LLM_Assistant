@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.security import require_api_key
+from app.core.security import get_current_user
+from app.models.domain import User
 from app.models.schemas import FineTuneRequest, FineTuneResponse
 from app.services.finetune_service import JobStatus, finetune_service
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/v1/finetune", tags=["finetune"])
 @router.post("", response_model=FineTuneResponse)
 async def submit_finetune(
     req: FineTuneRequest,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     job = finetune_service.submit(req)
     return FineTuneResponse(
@@ -31,7 +32,7 @@ async def submit_finetune(
 
 
 @router.get("")
-async def list_jobs(_key: str = Depends(require_api_key)):
+async def list_jobs(current_user: User = Depends(get_current_user)):
     jobs = finetune_service.list_jobs()
     return [
         {
@@ -47,7 +48,7 @@ async def list_jobs(_key: str = Depends(require_api_key)):
 
 
 @router.get("/{job_id}")
-async def get_job(job_id: str, _key: str = Depends(require_api_key)):
+async def get_job(job_id: str, current_user: User = Depends(get_current_user)):
     job = finetune_service.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

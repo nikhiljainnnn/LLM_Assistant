@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     api_key: str = "dev-api-key"
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # ── Database & Cache ───────────────────────────────────
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_assistant"
+    redis_url: str = "redis://localhost:6379/0"
+
     # ── OpenAI ─────────────────────────────────────────────
     openai_api_key: str = ""
     openai_default_model: str = "gpt-4o-mini"

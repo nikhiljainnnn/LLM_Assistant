@@ -14,7 +14,8 @@ import time
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.core.security import require_api_key
+from app.core.security import get_current_user
+from app.models.domain import User
 from app.models.schemas import (
     ChatRequest,
     ChatResponse,
@@ -44,7 +45,7 @@ async def _build_llm_input(req: ChatRequest):
     else:
         augmented = req.message
 
-    history = memory_service.get_history(req.conversation_id)
+    history = await memory_service.get_history(req.conversation_id)
     messages = history + [Message(role=RoleType.user, content=augmented)]
     return messages, sources
 
@@ -54,7 +55,7 @@ async def _build_llm_input(req: ChatRequest):
 @router.post("", response_model=ChatResponse)
 async def chat(
     req: ChatRequest,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     t0 = time.monotonic()
     messages, sources = await _build_llm_input(req)
@@ -69,8 +70,8 @@ async def chat(
     )
 
     # Persist to memory
-    memory_service.append_user(req.conversation_id, req.message)
-    memory_service.append_assistant(req.conversation_id, content)
+    await memory_service.append_user(req.conversation_id, req.message)
+    await memory_service.append_assistant(req.conversation_id, content)
 
     latency_ms = (time.monotonic() - t0) * 1000
 
@@ -86,7 +87,7 @@ async def chat(
 @router.post("/stream")
 async def chat_stream(
     req: ChatRequest,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
     """Server-Sent Events streaming endpoint."""
     messages, _sources = await _build_llm_input(req)
@@ -113,9 +114,9 @@ async def chat_stream(
             )
         finally:
             full_response = "".join(collected)
-            memory_service.append_user(req.conversation_id, req.message)
+            await memory_service.append_user(req.conversation_id, req.message)
             if full_response:
-                memory_service.append_assistant(req.conversation_id, full_response)
+                await memory_service.append_assistant(req.conversation_id, full_response)
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -131,7 +132,7 @@ async def chat_stream(
 @router.delete("/{conversation_id}")
 async def clear_conversation(
     conversation_id: str,
-    _key: str = Depends(require_api_key),
+    current_user: User = Depends(get_current_user),
 ):
-    memory_service.clear(conversation_id)
+    await memory_service.clear(conversation_id)
     return {"message": "Conversation cleared", "conversation_id": conversation_id}

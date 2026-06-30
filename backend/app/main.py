@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api import chat, finetune, rag
+from app.api import auth, chat, finetune, rag
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.core.middleware import (
@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(HTTPException, http_exception_handler)
 
     # Routers
+    app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(rag.router)
     app.include_router(finetune.router)

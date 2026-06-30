@@ -52,3 +52,15 @@ pytest==8.3.4
 pytest-asyncio==0.25.0
 httpx==0.28.1                     # async test client
 pytest-cov==6.0.0
+
+# ── Database & ORM ─────────────────────────────────────────
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+alembic==1.13.2
+
+# ── Memory (Redis) ─────────────────────────────────────────
+redis==5.0.7
+
+# ── Authentication (JWT) ───────────────────────────────────
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
