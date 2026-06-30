@@ -85,8 +85,10 @@ async def search(
 
 @router.get("/stats")
 async def stats(current_user: User = Depends(get_current_user)):
+    count = await rag_service.get_vector_count()
+    from app.services.embedding_service import embedding_service
     return {
-        "total_vectors": rag_service.vector_count,
-        "embedding_dim": rag_service._get_store().dim,
-        "store_path": str(rag_service._get_store().store_path),
+        "total_vectors": count,
+        "embedding_dim": embedding_service.dim,
+        "store_path": "pgvector"
     }

@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
 
     # ── HuggingFace ────────────────────────────────────────
-    hf_token: str = ""
+    hf_token: str | None = None
+    vllm_base_url: str | None = None
     hf_default_model: str = "mistralai/Mistral-7B-Instruct-v0.2"
 
     # ── RAG ────────────────────────────────────────────────

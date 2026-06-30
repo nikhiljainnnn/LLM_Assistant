@@ -25,8 +25,8 @@ async def submit_finetune(
 ):
     job = finetune_service.submit(req)
     return FineTuneResponse(
-        job_id=job.job_id,
-        status=job.status.value,
+        job_id=job["job_id"],
+        status=job["status"],
         message="Fine-tuning job submitted. Poll /api/v1/finetune/{job_id} for status.",
     )
 
@@ -36,12 +36,12 @@ async def list_jobs(current_user: User = Depends(get_current_user)):
     jobs = finetune_service.list_jobs()
     return [
         {
-            "job_id": j.job_id,
-            "status": j.status.value,
-            "started_at": j.started_at,
-            "finished_at": j.finished_at,
-            "metrics": j.metrics,
-            "error": j.error,
+            "job_id": j["job_id"],
+            "status": j["status"],
+            "started_at": j.get("started_at"),
+            "finished_at": j.get("finished_at"),
+            "metrics": j.get("metrics", {}),
+            "error": j.get("error"),
         }
         for j in jobs
     ]
@@ -53,11 +53,8 @@ async def get_job(job_id: str, current_user: User = Depends(get_current_user)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return {
-        "job_id": job.job_id,
-        "status": job.status.value,
-        "request": job.request.model_dump(),
-        "started_at": job.started_at,
-        "finished_at": job.finished_at,
-        "metrics": job.metrics,
-        "error": job.error,
+        "job_id": job["job_id"],
+        "status": job["status"],
+        "metrics": job.get("metrics", {}),
+        "error": job.get("error"),
     }

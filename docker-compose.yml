@@ -14,7 +14,7 @@ services:
 
   # ── PostgreSQL Database ────────────────────────────────────────
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: llm-assistant-db
     restart: unless-stopped
     environment:
@@ -87,6 +87,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  # ── Celery Worker ──────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: llm-assistant-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=info"]
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/llm_assistant}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - lora_models:/app/models/lora_adapter
     depends_on:
       db:
         condition: service_healthy

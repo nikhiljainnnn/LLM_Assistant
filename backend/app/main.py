@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
     @app.get("/health", response_model=HealthResponse, tags=["system"])
     async def health():
         from app.services.rag_service import rag_service
+        count = await rag_service.get_vector_count()
         return HealthResponse(
             status="ok",
             version="1.0.0",
@@ -92,7 +93,7 @@ def create_app() -> FastAPI:
                 "openai": settings.use_openai,
                 "huggingface": True,
             },
-            vector_store_size=rag_service.vector_count,
+            vector_store_size=count,
         )
 
     return app

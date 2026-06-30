@@ -110,53 +110,38 @@ class OpenAIBackend:
                     yield delta
 
 
-# ── HuggingFace Backend ──────────────────────────────────────────────────────
+# ── vLLM Backend (HuggingFace Replacement) ───────────────────────────────────
 
 class HuggingFaceBackend:
     """
-    Runs a HuggingFace causal-LM locally.
-    Lazy-loaded on first call to avoid startup overhead.
+    Client for vLLM Server, replacing local synchronous inference.
+    vLLM provides an OpenAI-compatible API, so we use AsyncOpenAI under the hood.
     """
 
     def __init__(self) -> None:
-        self._pipeline = None
-        self._model_id: str | None = None
+        self._client = None
 
-    def _load(self, model_id: str) -> None:
-        if self._model_id == model_id and self._pipeline is not None:
-            return
+    @property
+    def client(self):
+        if self._client is None:
+            from openai import AsyncOpenAI
+            if not settings.vllm_base_url:
+                raise ValueError("VLLM_BASE_URL is not configured. Cannot run HuggingFace models without a vLLM server.")
+            self._client = AsyncOpenAI(
+                api_key=settings.hf_token or "dummy-key",
+                base_url=settings.vllm_base_url,
+            )
+        return self._client
 
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-
-        logger.info("hf_model_loading", model=model_id)
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_id,
-            token=settings.hf_token or None,
-        )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            token=settings.hf_token or None,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto",
-        )
-        self._pipeline = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-        )
-        self._model_id = model_id
-        logger.info("hf_model_ready", model=model_id)
-
-    def _format_prompt(self, messages: list[Message], system_prompt: str) -> str:
-        """Simple Mistral-style instruction format."""
-        parts = [f"<s>[INST] {system_prompt}\n\n"]
+    def _build_messages(
+        self,
+        messages: list[Message],
+        system_prompt: str,
+    ) -> list[dict]:
+        result = [{"role": "system", "content": system_prompt}]
         for m in messages:
-            if m.role == RoleType.user:
-                parts.append(f"{m.content} [/INST]")
-            else:
-                parts.append(f"{m.content} </s><s>[INST] ")
-        return "".join(parts)
+            result.append({"role": m.role.value, "content": m.content})
+        return result
 
     async def chat(
         self,
@@ -166,45 +151,51 @@ class HuggingFaceBackend:
         temperature: float = 0.7,
         max_tokens: int = 1024,
     ) -> tuple[str, TokenUsage]:
-        import asyncio
+        model = model or settings.hf_default_model
+        vllm_messages = self._build_messages(messages, system_prompt)
 
-        model_id = model or settings.hf_default_model
-        prompt = self._format_prompt(messages, system_prompt)
+        logger.info("vllm_chat", model=model, messages=len(vllm_messages))
+        t0 = time.monotonic()
 
-        # Run blocking inference in a thread pool
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, self._run_inference, model_id, prompt, temperature, max_tokens
-        )
-        generated = result[0]["generated_text"][len(prompt):]
-        # Approximate token count
-        prompt_tokens = len(prompt.split())
-        completion_tokens = len(generated.split())
-        usage = TokenUsage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-        )
-        return generated, usage
-
-    def _run_inference(
-        self, model_id: str, prompt: str, temperature: float, max_tokens: int
-    ) -> Any:
-        self._load(model_id)
-        return self._pipeline(
-            prompt,
-            max_new_tokens=max_tokens,
+        resp = await self.client.chat.completions.create(
+            model=model,
+            messages=vllm_messages,
             temperature=temperature,
-            do_sample=temperature > 0,
-            pad_token_id=self._pipeline.tokenizer.eos_token_id,
+            max_tokens=max_tokens,
         )
 
-    async def stream(self, *args, **kwargs) -> AsyncGenerator[str, None]:
-        """HF streaming via TextIteratorStreamer — simplified version."""
-        content, _ = await self.chat(*args, **kwargs)
-        # Yield word-by-word to simulate streaming
-        for word in content.split(" "):
-            yield word + " "
+        elapsed = (time.monotonic() - t0) * 1000
+        usage = TokenUsage(
+            prompt_tokens=resp.usage.prompt_tokens,
+            completion_tokens=resp.usage.completion_tokens,
+            total_tokens=resp.usage.total_tokens,
+        )
+        content = resp.choices[0].message.content or ""
+        logger.info("vllm_chat_done", latency_ms=round(elapsed), tokens=usage.total_tokens)
+        return content, usage
+
+    async def stream(
+        self,
+        messages: list[Message],
+        model: str | None = None,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+    ) -> AsyncGenerator[str, None]:
+        model = model or settings.hf_default_model
+        vllm_messages = self._build_messages(messages, system_prompt)
+
+        async with await self.client.chat.completions.create(
+            model=model,
+            messages=vllm_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        ) as stream:
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta
 
 
 # ── Unified Service ──────────────────────────────────────────────────────────
