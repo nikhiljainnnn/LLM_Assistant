@@ -52,6 +52,10 @@ const getFormHeaders = (): Record<string, string> => {
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("access_token");
+      window.location.reload();
+    }
     let detail = res.statusText;
     try { const b = await res.json(); detail = b.detail ?? detail; } catch {}
     throw new APIError(res.status, detail);
@@ -80,7 +84,13 @@ export async function sendChat(req: ChatRequest): Promise<ChatResponse> {
 export async function streamChat(req: ChatRequest, onToken: (t: string) => void, onDone: () => void, onError: (e: Error) => void): Promise<void> {
   try {
     const res = await fetch(`${BASE_URL}/api/v1/chat/stream`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ ...req, stream: true }) });
-    if (!res.ok) throw new APIError(res.status, res.statusText);
+    if (!res.ok) {
+      if (res.status === 401) {
+        localStorage.removeItem("access_token");
+        window.location.reload();
+      }
+      throw new APIError(res.status, res.statusText);
+    }
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     while (true) {
