@@ -65,6 +65,7 @@ redis==5.0.7
 # ── Authentication (JWT) ───────────────────────────────────
 pyjwt==2.8.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 
 # ── Vector DB & Tasks ──────────────────────────────────────
 pgvector==0.3.1

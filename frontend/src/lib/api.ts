@@ -2,8 +2,8 @@
  * src/lib/api.ts — Typed API client for the LLM Assistant backend.
  */
 
-// @ts-ignore
-const BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ?? "";
+// Force relative paths so it goes through the NGINX or Vite proxy
+const BASE_URL = "";
 // @ts-ignore
 const API_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) ?? "dev-api-key";
 

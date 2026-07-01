@@ -56,9 +56,9 @@ export function AuthScreen({ onAuthSuccess }: { onAuthSuccess: () => void }) {
         <div className="glow-purple absolute bottom-0 right-0 w-[600px] h-[600px] bg-secondary-container/10 rounded-full blur-[100px] translate-x-1/3 translate-y-1/3 transition-transform duration-1000 ease-out" />
       </div>
 
-      <main className="flex-grow flex items-center justify-center p-md z-10">
-        <div className="w-full max-w-md glass-panel p-xl rounded-xl relative group">
-          <div className="flex flex-col items-center gap-lg">
+      <main className="flex-grow flex items-center justify-center p-4 z-10">
+        <div className="w-full max-w-md glass-panel p-8 rounded-xl relative group">
+          <div className="flex flex-col items-center gap-6">
             <div className="text-center">
               <h2 className="font-headline-md text-3xl md:text-4xl text-primary mb-2 font-bold">NEXUS</h2>
               <p className="text-sm text-on-surface-variant">Access the singularity</p>
