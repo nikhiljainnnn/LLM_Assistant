@@ -3,11 +3,25 @@
    Aesthetic: industrial terminal meets refined dark UI
    ═══════════════════════════════════════════════════════════════ */
 
+@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@theme {
+  --color-background: var(--bg-0);
+  --color-primary-container: var(--accent-4);
+  --color-on-primary-container: #ffffff;
+  --color-secondary-container: var(--accent);
+  --color-surface-container-highest: var(--bg-3);
+  --color-surface-container-low: var(--bg-1);
+  --color-on-surface: var(--text-0);
+  --color-on-surface-variant: var(--text-1);
+  --color-primary: var(--accent);
+  --color-error: var(--error);
+  --color-error-container: var(--error);
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+}
 
 /* ── Variables ─────────────────────────────────────────────────── */
 :root {
