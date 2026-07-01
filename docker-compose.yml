@@ -89,7 +89,7 @@ services:
       MAX_HISTORY_TURNS: ${MAX_HISTORY_TURNS:-10}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
-      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173,http://frontend"
+      ALLOWED_ORIGINS: '["http://localhost:3000", "http://localhost:5173", "http://frontend"]'
     volumes:
       - faiss_data:/app/data/faiss_index
       - lora_models:/app/models/lora_adapter
