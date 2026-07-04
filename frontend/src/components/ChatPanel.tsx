@@ -13,7 +13,7 @@ import type { SourceChunk } from "../lib/api";
 const PROVIDER_MODELS: Record<string, { label: string; models: string[] }> = {
   anthropic: {
     label: "Anthropic",
-    models: ["claude-haiku-3-5", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+    models: ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
   },
   openai: {
     label: "OpenAI",

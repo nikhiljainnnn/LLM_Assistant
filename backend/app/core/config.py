@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # ── Anthropic ──────────────────────────────────────────
     anthropic_api_key: str = ""
-    anthropic_default_model: str = "claude-haiku-3-5"
+    anthropic_default_model: str = "claude-3-5-haiku-20241022"
 
     # ── HuggingFace ────────────────────────────────────────
     hf_token: str | None = None

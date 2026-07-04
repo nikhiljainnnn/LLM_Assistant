@@ -97,6 +97,9 @@ def _resolve_model(provider: ModelProvider, model: str | None) -> str:
         else:
             chosen = f"huggingface/{chosen}"
 
+    if provider == ModelProvider.anthropic and not chosen.startswith("anthropic/"):
+        chosen = f"anthropic/{chosen}"
+
     return chosen
 
 

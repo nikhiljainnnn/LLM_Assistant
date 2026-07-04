@@ -106,10 +106,10 @@ async def chat_stream(
                 collected.append(token)
                 # SSE format: "data: <payload>\n\n"
                 yield f"data: {token}\n\n"
-        except Exception:
+        except Exception as e:
             yield (
                 "data: "
-                + json.dumps({"error": "Streaming failed. Please retry."})
+                + json.dumps({"error": f"Streaming failed: {e}"})
                 + "\n\n"
             )
         finally:
