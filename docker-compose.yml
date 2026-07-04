@@ -79,6 +79,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_DEFAULT_MODEL: ${OPENAI_DEFAULT_MODEL:-gpt-4o-mini}
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_DEFAULT_MODEL: ${ANTHROPIC_DEFAULT_MODEL:-claude-haiku-3-5}
       HF_TOKEN: ${HF_TOKEN:-}
       HF_DEFAULT_MODEL: ${HF_DEFAULT_MODEL:-mistralai/Mistral-7B-Instruct-v0.2}
       VECTOR_STORE_PATH: /app/data/faiss_index
@@ -121,6 +123,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/llm_assistant}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - lora_models:/app/models/lora_adapter

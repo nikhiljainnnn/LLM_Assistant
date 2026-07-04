@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     openai_default_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
 
+    # ── Anthropic ──────────────────────────────────────────
+    anthropic_api_key: str = ""
+    anthropic_default_model: str = "claude-haiku-3-5"
+
     # ── HuggingFace ────────────────────────────────────────
     hf_token: str | None = None
     vllm_base_url: str | None = None
@@ -67,6 +71,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
 
+    # ── Observability: Sentry ──────────────────────────────
+    sentry_dsn: str = ""  # Set to your project DSN to enable error tracking
+
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_origins(cls, v):
@@ -81,6 +88,10 @@ class Settings(BaseSettings):
     @property
     def use_openai(self) -> bool:
         return bool(self.openai_api_key)
+
+    @property
+    def use_anthropic(self) -> bool:
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache

@@ -9,11 +9,28 @@ import { useChat } from "../hooks/useChat";
 import type { ChatMessage } from "../hooks/useChat";
 import type { SourceChunk } from "../lib/api";
 
+// ── Provider → default models map ────────────────────────────────────────────
+const PROVIDER_MODELS: Record<string, { label: string; models: string[] }> = {
+  anthropic: {
+    label: "Anthropic",
+    models: ["claude-haiku-3-5", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
+  },
+  openai: {
+    label: "OpenAI",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"],
+  },
+  huggingface: {
+    label: "HuggingFace",
+    models: ["mistralai/Mistral-7B-Instruct-v0.2", "meta-llama/Llama-2-7b-hf"],
+  },
+};
+
 export function ChatPanel() {
   const { messages, isLoading, settings, setSettings, sendMessage, clearChat, stopStreaming } =
     useChat();
   const [input, setInput] = useState("");
   const [showSources, setShowSources] = useState<string | null>(null);
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +50,13 @@ export function ChatPanel() {
     }
   };
 
+  const handleProviderChange = (provider: string) => {
+    const defaultModel = PROVIDER_MODELS[provider]?.models[0] ?? "";
+    setSettings(s => ({ ...s, provider: provider as any, model: defaultModel }));
+  };
+
+  const currentProviderCfg = PROVIDER_MODELS[settings.provider] ?? PROVIDER_MODELS.anthropic;
+
   return (
     <div className="chat-panel">
       {/* Header */}
@@ -43,7 +67,13 @@ export function ChatPanel() {
             <span className={`badge ${settings.useRAG ? "badge--on" : "badge--off"}`}>
               {settings.useRAG ? "RAG ●" : "RAG ○"}
             </span>
-            <span className="badge badge--model">{settings.provider}</span>
+            <button
+              className="badge badge--model badge--clickable"
+              onClick={() => setShowModelPicker(x => !x)}
+              title="Change model"
+            >
+              {currentProviderCfg.label} · {settings.model || "default"} ▾
+            </button>
           </div>
         </div>
         <div className="chat-header-actions">
@@ -67,9 +97,53 @@ export function ChatPanel() {
         </div>
       </div>
 
+      {/* Model Picker Dropdown */}
+      {showModelPicker && (
+        <div className="model-picker">
+          <div className="model-picker-row">
+            <label className="model-picker-label">Provider</label>
+            <div className="provider-tabs">
+              {Object.entries(PROVIDER_MODELS).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  className={`provider-tab ${settings.provider === key ? "provider-tab--active" : ""}`}
+                  onClick={() => handleProviderChange(key)}
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="model-picker-row">
+            <label className="model-picker-label">Model</label>
+            <div className="model-chips">
+              {currentProviderCfg.models.map(m => (
+                <button
+                  key={m}
+                  className={`model-chip-btn ${settings.model === m ? "model-chip-btn--active" : ""}`}
+                  onClick={() => setSettings(s => ({ ...s, model: m }))}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="model-picker-row">
+            <label className="model-picker-label">Custom</label>
+            <input
+              className="model-custom-input"
+              type="text"
+              placeholder="e.g. claude-3-5-sonnet-20241022"
+              value={settings.model}
+              onChange={e => setSettings(s => ({ ...s, model: e.target.value }))}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="messages-container">
-        {messages.length === 0 && <EmptyState />}
+        {messages.length === 0 && <EmptyState provider={currentProviderCfg.label} model={settings.model} />}
         {messages.map(msg => (
           <MessageBubble
             key={msg.id}
@@ -118,6 +192,7 @@ export function ChatPanel() {
     </div>
   );
 }
+
 
 // ── Message Bubble ────────────────────────────────────────────────────────────
 
@@ -262,12 +337,14 @@ const SUGGESTIONS = [
   "How does FAISS perform similarity search?",
 ];
 
-function EmptyState() {
+function EmptyState({ provider, model }: { provider: string; model: string }) {
   return (
     <div className="empty-state">
       <div className="empty-icon">◈</div>
       <h2 className="empty-title">NEXUS AI Assistant</h2>
-      <p className="empty-subtitle">RAG-powered · Streaming · Multi-model</p>
+      <p className="empty-subtitle">
+        {provider} · {model || "default"} · RAG-powered · Streaming
+      </p>
       <div className="suggestions">
         {SUGGESTIONS.map(s => (
           <div key={s} className="suggestion-chip">{s}</div>

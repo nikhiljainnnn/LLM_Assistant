@@ -35,8 +35,10 @@ RUN useradd -m -u 1000 appuser
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 ENV PATH=/home/appuser/.local/bin:$PATH
 
-# Copy application code
+# Copy application code and migrations
 COPY --chown=appuser:appuser app/ ./app/
+COPY --chown=appuser:appuser migrations/ ./migrations/
+COPY --chown=appuser:appuser alembic.ini .
 
 # Create data directories
 RUN mkdir -p ./data/faiss_index ./models/lora_adapter && chown -R appuser:appuser /app

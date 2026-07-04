@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -26,9 +27,30 @@ from app.core.middleware import (
 )
 from app.models.schemas import HealthResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
 
 setup_logging()
 logger = get_logger(__name__)
+
+# ── Sentry ────────────────────────────────────────────────────────────────────
+# Only activates when SENTRY_DSN is set — safe to leave unset in development.
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+            RedisIntegration(),
+        ],
+        # Capture 20% of transactions for performance monitoring in production.
+        traces_sample_rate=0.2 if settings.is_production else 0.0,
+        environment=settings.app_env,
+        send_default_pii=False,   # Do NOT send PII (emails, usernames) to Sentry
+    )
+    logger.info("sentry.initialized", environment=settings.app_env)
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
@@ -37,14 +59,32 @@ limiter = Limiter(key_func=get_remote_address)
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.core.db import engine
+
+    # ── Startup ───────────────────────────────────────────────
     logger.info(
         "startup",
         env=settings.app_env,
         openai=settings.use_openai,
         vector_store=str(settings.vector_store_path),
     )
+
+    # Verify DB connectivity and warm up the connection pool.
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("database.connected", url=settings.database_url.split("@")[-1])
+    except Exception as exc:
+        logger.error("database.connection_failed", error=str(exc))
+        # Re-raise so the server refuses to start with a broken DB
+        raise
+
     yield
+
+    # ── Shutdown ──────────────────────────────────────────────
     logger.info("shutdown")
+    await engine.dispose()
+    logger.info("database.pool_disposed")
 
 
 # ── App factory ───────────────────────────────────────────────────────────────
@@ -91,7 +131,8 @@ def create_app() -> FastAPI:
             status="ok",
             version="1.0.0",
             providers={
-                "openai": settings.use_openai,
+                "openai":    settings.use_openai,
+                "anthropic": settings.use_anthropic,
                 "huggingface": True,
             },
             vector_store_size=count,

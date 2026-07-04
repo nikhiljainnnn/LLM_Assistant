@@ -58,6 +58,7 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
+    print(f"VALIDATION ERROR on {request.url.path}:", exc.errors(), flush=True)
     request_id = getattr(request.state, "request_id", None)
     return JSONResponse(
         status_code=422,

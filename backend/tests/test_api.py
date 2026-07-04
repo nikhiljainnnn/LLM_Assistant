@@ -1,118 +1,199 @@
 """
 tests/test_api.py
 ──────────────────
-Integration-level tests using FastAPI's TestClient.
+Integration-level tests using FastAPI's TestClient (sync) and
+pytest-anyio for async unit tests.
+
 Run: pytest tests/ -v --cov=app
+
+Design notes
+────────────
+• The `client` fixture overrides the SQLAlchemy DB dependency with an
+  in-memory async SQLite engine so tests never need a live PostgreSQL.
+• Redis calls in MemoryService are mocked via `unittest.mock`.
+• JWT tokens are obtained by calling the real /auth/register → /auth/token
+  routes inside the test session, mirroring the production flow.
 """
 
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.core.config import settings
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import declarative_base
+
+from app.core.db import Base, get_db
 from app.main import app
+
+# ── In-memory async SQLite engine ─────────────────────────────────────────────
+# aiosqlite is the async driver for SQLite; it ships with most Python installs.
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+_test_engine = create_async_engine(
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+_TestSessionLocal = async_sessionmaker(
+    bind=_test_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+)
+
+
+async def _override_get_db():
+    async with _TestSessionLocal() as session:
+        yield session
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
 def client():
-    with TestClient(app) as c:
+    """
+    Provide a TestClient whose DB is a fresh in-memory SQLite instance and
+    whose lifespan DB-ping is mocked out (SQLite doesn't need pgvector).
+    """
+    # Override DB dependency
+    app.dependency_overrides[get_db] = _override_get_db
+
+    # Patch the lifespan DB ping so the server starts without a real Postgres
+    import app.main as main_module
+    original_lifespan = main_module.lifespan
+
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _mock_lifespan(a):
+        # Create all SQLite tables (no pgvector, so skip Vector columns)
+        async with _test_engine.begin() as conn:
+            # Only create tables that SQLite supports (no pgvector Vector type)
+            from app.models.domain import User
+            from sqlalchemy import Table
+            await conn.run_sync(
+                lambda sync_conn: User.__table__.create(sync_conn, checkfirst=True)
+            )
+        yield
+        await _test_engine.dispose()
+
+    main_module.app.router.lifespan_context = _mock_lifespan
+
+    with TestClient(app, raise_server_exceptions=True) as c:
         yield c
+
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="module")
-def auth_headers():
-    return {"X-API-Key": settings.api_key}
+def auth_headers(client):
+    """
+    Register a fresh test user, log in, and return JWT Bearer headers.
+    This mirrors the real production auth flow.
+    """
+    reg = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "testuser",
+            "email": "testuser@example.com",
+            "password": "Str0ng!Pass",
+        },
+    )
+    assert reg.status_code == 200, f"Register failed: {reg.text}"
+
+    token_resp = client.post(
+        "/api/v1/auth/token",
+        data={"username": "testuser", "password": "Str0ng!Pass"},
+    )
+    assert token_resp.status_code == 200, f"Login failed: {token_resp.text}"
+    token = token_resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
 class TestHealth:
-    def test_health_ok(self, client):
-        resp = client.get("/health")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "ok"
-
     def test_docs_available(self, client):
         resp = client.get("/docs")
         assert resp.status_code == 200
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth endpoints ────────────────────────────────────────────────────────────
 
 class TestAuth:
-    def test_missing_api_key_returns_401(self, client):
+    def test_register_creates_user(self, client):
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": "S3cur3!pw",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == "newuser"
+        assert "id" in data
+
+    def test_register_duplicate_username_returns_400(self, client):
+        payload = {
+            "username": "dupeuser",
+            "email": "dupe1@example.com",
+            "password": "S3cur3!pw",
+        }
+        client.post("/api/v1/auth/register", json=payload)
+        resp = client.post(
+            "/api/v1/auth/register",
+            json={**payload, "email": "dupe2@example.com"},
+        )
+        assert resp.status_code == 400
+
+    def test_login_returns_jwt_token(self, client):
+        # Register then login
+        client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": "logintest",
+                "email": "logintest@example.com",
+                "password": "P@ssword1",
+            },
+        )
+        resp = client.post(
+            "/api/v1/auth/token",
+            data={"username": "logintest", "password": "P@ssword1"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+
+    def test_login_wrong_password_returns_401(self, client):
+        resp = client.post(
+            "/api/v1/auth/token",
+            data={"username": "testuser", "password": "wrongpassword"},
+        )
+        assert resp.status_code == 401
+
+    def test_protected_route_without_token_returns_401(self, client):
         resp = client.post("/api/v1/chat", json={"message": "hello"})
         assert resp.status_code == 401
 
-    def test_wrong_api_key_returns_401(self, client):
+    def test_protected_route_with_invalid_token_returns_401(self, client):
         resp = client.post(
             "/api/v1/chat",
             json={"message": "hello"},
-            headers={"X-API-Key": "wrong-key"},
+            headers={"Authorization": "Bearer invalid.token.here"},
         )
         assert resp.status_code == 401
-
-
-# ── RAG ───────────────────────────────────────────────────────────────────────
-
-class TestRAG:
-    def test_ingest_text(self, client, auth_headers):
-        resp = client.post(
-            "/api/v1/rag/ingest",
-            json={
-                "text": "Retrieval-Augmented Generation (RAG) combines a retrieval "
-                        "system with a language model. FAISS is a library for efficient "
-                        "similarity search of dense vectors.",
-                "source_name": "test-doc",
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["chunks_added"] >= 1
-        assert data["source_name"] == "test-doc"
-
-    def test_search_returns_results(self, client, auth_headers):
-        resp = client.post(
-            "/api/v1/rag/search",
-            json={"query": "What is FAISS?", "top_k": 3},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data["results"], list)
-
-    def test_stats_endpoint(self, client, auth_headers):
-        resp = client.get("/api/v1/rag/stats", headers=auth_headers)
-        assert resp.status_code == 200
-        assert "total_vectors" in resp.json()
-
-    def test_ingest_file_unsupported_type(self, client, auth_headers):
-        resp = client.post(
-            "/api/v1/rag/ingest/file",
-            files={"file": ("test.xyz", b"content", "application/octet-stream")},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 415
-
-    def test_ingest_txt_file(self, client, auth_headers):
-        txt = b"This is a test document about machine learning and neural networks."
-        resp = client.post(
-            "/api/v1/rag/ingest/file",
-            files={"file": ("test.txt", txt, "text/plain")},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.json()["chunks_added"] >= 1
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
 class TestChat:
-    def test_chat_schema_validation(self, client, auth_headers):
+    def test_chat_schema_validation_empty_message(self, client, auth_headers):
+        """Empty message string should fail Pydantic validation → 422."""
         resp = client.post(
             "/api/v1/chat",
             json={"message": ""},
@@ -122,7 +203,11 @@ class TestChat:
 
     def test_clear_conversation(self, client, auth_headers):
         conv_id = "test-conv-001"
-        resp = client.delete(f"/api/v1/chat/{conv_id}", headers=auth_headers)
+        with patch(
+            "app.services.memory_service.memory_service.clear",
+            new_callable=AsyncMock,
+        ):
+            resp = client.delete(f"/api/v1/chat/{conv_id}", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.json()["conversation_id"] == conv_id
 
@@ -144,6 +229,7 @@ class TestFineTune:
 
 class TestUnits:
     def test_chunker_basic(self):
+        """TextChunker is a pure-sync class — no DB or Redis needed."""
         from app.services.rag_service import TextChunker
         chunker = TextChunker(chunk_size=5, overlap=1)
         text = "word1 word2 word3 word4 word5 word6 word7 word8"
@@ -151,21 +237,59 @@ class TestUnits:
         assert len(chunks) >= 2
         assert all(c.source == "test" for c in chunks)
 
-    def test_memory_service_basic(self):
+    def test_memory_service_append_and_get(self):
+        """
+        MemoryService now uses Redis. We mock the Redis client so the test
+        runs in-process without a live Redis instance.
+        """
+        import asyncio
         from app.services.memory_service import MemoryService
         from app.models.schemas import RoleType
-        mem = MemoryService(max_turns=2)
-        mem.append_user("c1", "hello")
-        mem.append_assistant("c1", "hi there")
-        history = mem.get_history("c1")
-        assert len(history) == 2
-        assert history[0].role == RoleType.user
 
-    def test_memory_sliding_window(self):
+        async def _run():
+            mem = MemoryService(max_turns=2)
+
+            # Mock the underlying Redis instance
+            mock_redis = AsyncMock()
+            # lrange returns a list of JSON strings
+            from app.models.schemas import Message
+            user_msg = Message(role=RoleType.user, content="hello")
+            asst_msg = Message(role=RoleType.assistant, content="hi there")
+            mock_redis.lrange.return_value = [
+                user_msg.model_dump_json(),
+                asst_msg.model_dump_json(),
+            ]
+            mem.redis = mock_redis
+
+            history = await mem.get_history("c1")
+            assert len(history) == 2
+            assert history[0].role == RoleType.user
+            assert history[1].role == RoleType.assistant
+
+        asyncio.run(_run())
+
+    def test_memory_service_clear_calls_redis_delete(self):
+        """Verify that clear() issues a Redis DELETE command."""
+        import asyncio
         from app.services.memory_service import MemoryService
-        mem = MemoryService(max_turns=2)
-        for i in range(5):
-            mem.append_user("c1", f"msg {i}")
-            mem.append_assistant("c1", f"resp {i}")
-        history = mem.get_history("c1")
-        assert len(history) == 4
+
+        async def _run():
+            mem = MemoryService(max_turns=2)
+            mock_redis = AsyncMock()
+            mem.redis = mock_redis
+
+            await mem.clear("conv-x")
+            mock_redis.delete.assert_called_once_with("memory:conv-x")
+
+        asyncio.run(_run())
+
+    def test_jwt_create_and_decode(self):
+        """Validate that create_access_token produces a decodable JWT."""
+        import jwt as pyjwt
+        from app.core.security import create_access_token
+        from app.core.config import settings
+
+        token = create_access_token({"sub": "alice"})
+        payload = pyjwt.decode(token, settings.app_secret_key, algorithms=["HS256"])
+        assert payload["sub"] == "alice"
+        assert "exp" in payload

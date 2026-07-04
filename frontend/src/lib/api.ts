@@ -13,7 +13,7 @@ export interface Message { role: "user" | "assistant" | "system"; content: strin
 export interface SourceChunk { text: string; source: string; score: number; chunk_index: number; }
 export interface TokenUsage { prompt_tokens: number; completion_tokens: number; total_tokens: number; }
 export interface ChatResponse { conversation_id: string; message: Message; sources: SourceChunk[]; usage: TokenUsage | null; latency_ms: number; }
-export interface ChatRequest { message: string; conversation_id: string; use_rag?: boolean; provider?: "openai" | "huggingface"; model?: string; system_prompt?: string; temperature?: number; max_tokens?: number; }
+export interface ChatRequest { message: string; conversation_id: string; use_rag?: boolean; provider?: "openai" | "huggingface" | "anthropic"; model?: string; system_prompt?: string; temperature?: number; max_tokens?: number; }
 export interface IngestResponse { source_name: string; chunks_added: number; total_vectors: number; }
 export interface SearchResult { query: string; results: SourceChunk[]; }
 export interface RAGStats { total_vectors: number; embedding_dim: number; store_path: string; }
@@ -38,7 +38,6 @@ const getHeaders = (): Record<string, string> => {
   }
   return headers;
 };
-
 const getFormHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("access_token");
   const headers: Record<string, string> = {};
@@ -57,7 +56,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
       window.location.reload();
     }
     let detail = res.statusText;
-    try { const b = await res.json(); detail = b.detail ?? detail; } catch {}
+    try { const b = await res.json(); detail = b.error?.message ?? b.detail ?? detail; } catch {}
     throw new APIError(res.status, detail);
   }
   return res.json() as Promise<T>;
@@ -83,7 +82,7 @@ export async function sendChat(req: ChatRequest): Promise<ChatResponse> {
 
 export async function streamChat(req: ChatRequest, onToken: (t: string) => void, onDone: () => void, onError: (e: Error) => void): Promise<void> {
   try {
-    const res = await fetch(`${BASE_URL}/api/v1/chat/stream`, { method: "POST", headers: getHeaders(), body: JSON.stringify({ ...req, stream: true }) });
+    const res = await fetch(`${BASE_URL}/api/v1/chat/stream`, { method: "POST", headers: getHeaders(), body: JSON.stringify(req) });
     if (!res.ok) {
       if (res.status === 401) {
         localStorage.removeItem("access_token");
@@ -139,6 +138,34 @@ export async function getRAGStats(): Promise<RAGStats> {
 export async function listFineTuneJobs(): Promise<FineTuneJob[]> {
   const res = await fetch(`${BASE_URL}/api/v1/finetune`, { headers: getHeaders() });
   return handleResponse<FineTuneJob[]>(res);
+}
+
+export interface FineTuneRequest {
+  dataset_path: string;
+  base_model?: string;
+  epochs?: number;
+  batch_size?: number;
+  learning_rate?: number;
+}
+
+export interface FineTuneSubmitResponse {
+  job_id: string;
+  status: string;
+  message: string;
+}
+
+export async function submitFineTuneJob(req: FineTuneRequest): Promise<FineTuneSubmitResponse> {
+  const res = await fetch(`${BASE_URL}/api/v1/finetune`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(req),
+  });
+  return handleResponse<FineTuneSubmitResponse>(res);
+}
+
+export async function getFineTuneJob(jobId: string): Promise<FineTuneJob> {
+  const res = await fetch(`${BASE_URL}/api/v1/finetune/${jobId}`, { headers: getHeaders() });
+  return handleResponse<FineTuneJob>(res);
 }
 
 export async function getHealth(): Promise<HealthResponse> {

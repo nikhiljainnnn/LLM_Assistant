@@ -8,13 +8,13 @@ export interface ChatMessage {
 }
 
 export interface ChatSettings {
-  useRAG: boolean; stream: boolean; provider: "openai" | "huggingface";
+  useRAG: boolean; stream: boolean; provider: "openai" | "anthropic" | "huggingface";
   model: string; temperature: number; maxTokens: number; systemPrompt: string;
 }
 
 const DEFAULT_SETTINGS: ChatSettings = {
-  useRAG: true, stream: true, provider: "openai",
-  model: "", temperature: 0.7, maxTokens: 1024, systemPrompt: "",
+  useRAG: true, stream: true, provider: "anthropic",
+  model: "claude-haiku-3-5", temperature: 0.7, maxTokens: 1024, systemPrompt: "",
 };
 
 export function useChat() {
